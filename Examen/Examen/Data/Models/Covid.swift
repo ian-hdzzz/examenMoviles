@@ -20,15 +20,15 @@ struct Country: Codable {
 
 typealias Countries = [Country]
 
-// Para getCountry (country=canada)
 struct CountryCasesByDate: Codable {
     let total: Int
     let new: Int
 }
 
-struct CountryDetail: Codable {
+struct CountryDetail: Codable, Identifiable {
     let country: String
     let region: String
     let cases: [String: CountryCasesByDate]
+    var id: String { country }
 }
 

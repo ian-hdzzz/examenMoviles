@@ -33,7 +33,7 @@ class CountriesRepository: CountriesAPIProtocol {
         }
 
     func getCountriesList(date: String) async -> Countries? {
-        return await nservice.getCountries(url: URL(string:"\(Api.base)\(Api.routes.countries)\(Api.routes.date)")!, date: date)
+        return await nservice.getCountries(date: date)
     }
 
     func getCountryInfo(country: String) async -> CountryDetail? {

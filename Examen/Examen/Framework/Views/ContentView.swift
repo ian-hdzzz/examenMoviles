@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import SDWebImageSwiftUI
+import Charts
 
 
 import SwiftUI
@@ -15,39 +16,86 @@ struct ContentView: View {
     @StateObject var contentViewModel = ContentViewModel()
     
     @State private var selectedCountry: CountryDetail? = nil
+    @State private var isLoadingDetail: Bool = false
+    @State private var searchText: String = ""
+
+    var filteredCountries: [CountryDetail] {
+        contentViewModel.countryList.filter {
+            ($0.cases.values.first?.total ?? 0) > 0 &&
+            (searchText.isEmpty || $0.country.localizedCaseInsensitiveContains(searchText))
+        }
+    }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 16) {
-                ForEach(contentViewModel.countryList, id: \ .country) { countryDetail in
-                    Button(action: {
-                        selectedCountry = countryDetail
-                    }) {
-                        HStack(spacing: 16) {
-                            // Si tienes URL de bandera, puedes mostrarla aquí
-                            /*WebImage(url: URL(string: countryDetail.flagURL ?? ""))
-                                .resizable()
-                                .placeholder(Image(systemName: "photo"))
-                                .frame(width: 40, height: 28)
-                                .cornerRadius(6)*/
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(countryDetail.country)
-                                    .font(.headline)
-                                Text(countryDetail.region)
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                        }
-                        .padding()
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                        .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
-                    }
-                    .buttonStyle(PlainButtonStyle())
+        VStack(spacing: 16) {
+            Text("Casos totales de COVID-19 por país")
+                .font(.title2)
+                .bold()
+                .padding(.top)
+            TextField("Buscar país...", text: $searchText)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            if !filteredCountries.isEmpty {
+                Chart(filteredCountries) { country in
+                    BarMark(
+                        x: .value("País", country.country),
+                        y: .value("Casos", country.cases.values.first?.total ?? 0)
+                    )
+                    .foregroundStyle(.blue)
                 }
+                .frame(height: 220)
+                .padding(.horizontal)
+            } else {
+                Text("No hay países con datos para mostrar.")
+                    .foregroundColor(.gray)
+                    .padding()
             }
-            .padding()
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    ForEach(filteredCountries, id: \ .country) { countryDetail in
+                        Button(action: {
+                            isLoadingDetail = true
+                            Task {
+                                if let info = await contentViewModel.countryInfoRequirement.getCountryInfo(country: countryDetail.country) {
+                                    selectedCountry = info
+                                } else {
+                                    selectedCountry = countryDetail 
+                                }
+                                isLoadingDetail = false
+                            }
+                        }) {
+                            HStack(spacing: 16) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(countryDetail.country)
+                                        .font(.headline)
+                                    Text(countryDetail.region)
+                                        .font(.subheadline)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                if let total = countryDetail.cases.values.first?.total, total > 0 {
+                                    Text("Casos: \(total)")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 2)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding()
+            }
+        }
+        .overlay {
+            if isLoadingDetail {
+                ProgressView("Cargando detalles...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.2))
+            }
         }
         .onAppear {
             Task {
@@ -66,27 +114,58 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 
-// MARK: - CountryDetailSheet
 struct CountryDetailSheet: View {
     let country: CountryDetail
 
     var body: some View {
-        VStack(spacing: 24) {
-            // Si tienes URL de bandera, puedes mostrarla aquí
-            /*WebImage(url: URL(string: country.flagURL ?? ""))
-                .resizable()
-                .frame(width: 80, height: 56)
-                .cornerRadius(8)*/
-            Text(country.country)
-                .font(.largeTitle)
-                .bold()
-            Text("Región: \(country.region)")
-                .font(.title2)
-                .foregroundColor(.gray)
-            // Agrega más detalles si tienes más propiedades
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                Text(country.country)
+                    .font(.largeTitle)
+                    .bold()
+                Text("Región: \(country.region)")
+                    .font(.title2)
+                    .foregroundColor(.gray)
+
+                if !country.cases.isEmpty {
+                    Text("Casos por fecha:")
+                        .font(.headline)
+                        .padding(.top)
+                    if country.cases.count > 1 {
+                        Chart(Array(country.cases.keys.sorted()), id: \ .self) { date in
+                            if let data = country.cases[date] {
+                                BarMark(
+                                    x: .value("Fecha", date),
+                                    y: .value("Casos", data.total)
+                                )
+                                .foregroundStyle(.blue)
+                            }
+                        }
+                        .frame(height: 180)
+                        .padding(.horizontal)
+                    }
+                    ForEach(country.cases.keys.sorted(), id: \ .self) { date in
+                        if let data = country.cases[date] {
+                            HStack {
+                                Text(date)
+                                    .font(.caption)
+                                Spacer()
+                                Text("Total: \(data.total)")
+                                    .font(.caption)
+                                Text("Nuevos: \(data.new)")
+                                    .font(.caption)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                } else {
+                    Text("No hay datos de casos para este país.")
+                        .foregroundColor(.gray)
+                }
+                Spacer()
+            }
+            .padding()
         }
-        .padding()
     }
 }
 

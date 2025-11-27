@@ -19,11 +19,14 @@ class ContentViewModel: ObservableObject {
 
     @MainActor
     func getCountriesList(date: String) async {
-        guard let countries = await countryListRequirement.getCountryList(date: date) else { return }
-        for country in countries {
-            if let infoCountry = await countryInfoRequirement.getCountryInfo(country: country.country) {
-                self.countryList.append(infoCountry)
-            }
+        guard let countries = await countryListRequirement.getCountryList(date: date) else {
+            print("No se obtuvieron países de la API")
+            return
         }
+        // Convertimos cada Country a CountryDetail usando solo los datos disponibles.
+        self.countryList = countries.map { country in
+            CountryDetail(country: country.country, region: country.region, cases: [date: CountryCasesByDate(total: country.cases.total, new: country.cases.new)])
+        }
+        print("Países mostrados:", self.countryList)
     }
 }
