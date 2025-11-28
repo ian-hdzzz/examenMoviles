@@ -37,6 +37,6 @@ class CountriesRepository: CountriesAPIProtocol {
     }
 
     func getCountryInfo(country: String) async -> CountryDetail? {
-        return await nservice.getCountryInfo(url: URL(string:"\(Api.base)\(Api.routes.countries)/\(country)")!)
+        return await nservice.getCountryInfo(country: country)
     }
 }

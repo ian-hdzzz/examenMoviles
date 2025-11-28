@@ -17,7 +17,10 @@ struct ContentView: View {
     
     @State private var selectedCountry: CountryDetail? = nil
     @State private var isLoadingDetail: Bool = false
+    @State private var showSuccess: Bool = false
     @State private var searchText: String = ""
+    @State private var hoveredCountry: String? = nil
+    @State private var tappedCountry: String? = nil
 
     var filteredCountries: [CountryDetail] {
         contentViewModel.countryList.filter {
@@ -55,9 +58,11 @@ struct ContentView: View {
                     ForEach(filteredCountries, id: \ .country) { countryDetail in
                         Button(action: {
                             isLoadingDetail = true
+                            showSuccess = false
                             Task {
                                 if let info = await contentViewModel.countryInfoRequirement.getCountryInfo(country: countryDetail.country) {
                                     selectedCountry = info
+                                    showSuccess = true
                                 } else {
                                     selectedCountry = countryDetail 
                                 }
@@ -95,6 +100,24 @@ struct ContentView: View {
                 ProgressView("Cargando detalles...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.black.opacity(0.2))
+            } else if showSuccess {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Label("Datos cargados", systemImage: "checkmark.circle")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .background(Color.green.opacity(1))
+                .cornerRadius(16)
+                .padding(5)
+                .frame(maxWidth: 270, maxHeight: 20)
+                .transition(.opacity)
             }
         }
         .onAppear {
@@ -116,6 +139,25 @@ struct ContentView_Previews: PreviewProvider {
 
 struct CountryDetailSheet: View {
     let country: CountryDetail
+    @State private var startYear: String = "2020"
+    @State private var startMonth: String = "02"
+    @State private var endYear: String = "2023"
+    @State private var endMonth: String = "12"
+
+    var availableYears: [String] {
+        ["2020", "2021", "2022", "2023"]
+    }
+    var availableMonths: [String] {
+        ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]
+    }
+
+    var filteredDates: [String] {
+        let start = "\(startYear)-\(startMonth)"
+        let end = "\(endYear)-\(endMonth)"
+        return country.cases.keys.filter { date in
+            date >= start && date <= end
+        }.sorted()
+    }
 
     var body: some View {
         ScrollView {
@@ -123,16 +165,19 @@ struct CountryDetailSheet: View {
                 Text(country.country)
                     .font(.largeTitle)
                     .bold()
-                Text("Región: \(country.region)")
+                Text("Región: \(country.region.isEmpty ? "Sin región" : country.region)")
                     .font(.title2)
                     .foregroundColor(.gray)
 
+                Text("Casos de COVID-19 en el tiempo")
+                    .font(.headline)
+                    .padding(.top, 8)
+                Text("De \(startYear)-\(startMonth) a \(endYear)-\(endMonth)")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
                 if !country.cases.isEmpty {
-                    Text("Casos por fecha:")
-                        .font(.headline)
-                        .padding(.top)
-                    if country.cases.count > 1 {
-                        Chart(Array(country.cases.keys.sorted()), id: \ .self) { date in
+                    if !filteredDates.isEmpty {
+                        Chart(filteredDates, id: \ .self) { date in
                             if let data = country.cases[date] {
                                 BarMark(
                                     x: .value("Fecha", date),
@@ -144,19 +189,77 @@ struct CountryDetailSheet: View {
                         .frame(height: 180)
                         .padding(.horizontal)
                     }
-                    ForEach(country.cases.keys.sorted(), id: \ .self) { date in
-                        if let data = country.cases[date] {
+                    Text("Filtrar por rango de fechas:")
+                        .font(.headline)
+                        .padding(.top)
+                    VStack(spacing: 8) {
+                        HStack {
+                            Text("Desde:")
+                                .font(.subheadline)
+                            Spacer()
+                        }
+                        HStack {
+                            Picker("Año inicio", selection: $startYear) {
+                                ForEach(availableYears, id: \ .self) { year in
+                                    Text(year).tag(year)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            Picker("Mes inicio", selection: $startMonth) {
+                                ForEach(availableMonths, id: \ .self) { month in
+                                    Text(month).tag(month)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        HStack {
+                            Text("Hasta:")
+                                .font(.subheadline)
+                            Spacer()
+                        }
+                        HStack {
+                            Picker("Año fin", selection: $endYear) {
+                                ForEach(availableYears, id: \ .self) { year in
+                                    Text(year).tag(year)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            Picker("Mes fin", selection: $endMonth) {
+                                ForEach(availableMonths, id: \ .self) { month in
+                                    Text(month).tag(month)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    if !filteredDates.isEmpty {
+                        // Agrupar por mes
+                        let groupedByMonth = Dictionary(grouping: filteredDates) { date in
+                            String(date.prefix(7)) // yyyy-MM
+                        }
+                        Text("Detalle por mes")
+                            .font(.headline)
+                            .padding(.top, 8)
+                        ForEach(groupedByMonth.keys.sorted(), id: \ .self) { month in
+                            let monthDates = groupedByMonth[month] ?? []
+                            let total = monthDates.compactMap { country.cases[$0]?.total }.reduce(0, +)
+                            let nuevos = monthDates.compactMap { country.cases[$0]?.new }.reduce(0, +)
                             HStack {
-                                Text(date)
+                                Text(month)
                                     .font(.caption)
                                 Spacer()
-                                Text("Total: \(data.total)")
+                                Text("Total: \(total)")
                                     .font(.caption)
-                                Text("Nuevos: \(data.new)")
+                                Text("Nuevos: \(nuevos)")
                                     .font(.caption)
                             }
                             .padding(.vertical, 2)
                         }
+                    } else {
+                        Text("No hay datos para el filtro seleccionado.")
+                            .foregroundColor(.gray)
                     }
                 } else {
                     Text("No hay datos de casos para este país.")
