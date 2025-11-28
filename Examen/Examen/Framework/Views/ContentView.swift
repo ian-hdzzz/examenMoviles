@@ -27,16 +27,16 @@ struct ContentView: View {
             ($0.cases.values.first?.total ?? 0) > 0 &&
             (searchText.isEmpty || $0.country.localizedCaseInsensitiveContains(searchText))
         }
-        // Si hay más de 30 países, tomar los 30 centrales
-        if all.count > 30 {
-            let start = (all.count - 30) / 2
-            return Array(all[start..<(start+30)])
+        
+        if all.count > 20 {
+            let start = (all.count - 20) / 2
+            return Array(all[start..<(start+20)])
         } else {
             return all
         }
     }
 
-    // UserDefaults key
+
     let lastCountryKey = "lastCountryViewed"
 
     var body: some View {
@@ -56,8 +56,23 @@ struct ContentView: View {
                     )
                     .foregroundStyle(.blue)
                 }
-                .frame(height: 220)
+                .frame(height: 260)
                 .padding(.horizontal)
+                .chartXAxis {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel() {
+                            if let country = value.as(String.self) {
+                                Text(country)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .frame(width: 60)
+                                    .rotationEffect(.degrees(-45))
+                            }
+                        }
+                    }
+                }
             } else {
                 Text("No hay países con datos para mostrar.")
                     .foregroundColor(.gray)
@@ -69,16 +84,19 @@ struct ContentView: View {
                         Button(action: {
                             isLoadingDetail = true
                             showSuccess = false
-                            // Guardar país en UserDefaults
+                            // Guardamos país en UserDefaults
                             UserDefaults.standard.set(countryDetail.country, forKey: lastCountryKey)
                             Task {
-                                if let info = await contentViewModel.countryInfoRequirement.getCountryInfo(country: countryDetail.country) {
-                                    selectedCountry = info
-                                    showSuccess = true
-                                } else {
-                                    selectedCountry = countryDetail 
-                                }
-                                isLoadingDetail = false
+                        if let info = await contentViewModel.countryInfoRequirement.getCountryInfo(country: countryDetail.country) {
+                            selectedCountry = info
+                            showSuccess = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                showSuccess = false
+                            }
+                        } else {
+                            selectedCountry = countryDetail 
+                        }
+                        isLoadingDetail = false
                             }
                         }) {
                             HStack(spacing: 16) {
@@ -135,18 +153,21 @@ struct ContentView: View {
         .onAppear {
             Task {
                 await contentViewModel.getCountriesList(date: "2022-01-01")
-                // Leer país guardado y mostrarlo/prellenar búsqueda
+                // Leemos el país guardado y lo mostramos
                 if let lastCountry = UserDefaults.standard.string(forKey: lastCountryKey), !lastCountry.isEmpty {
                     searchText = lastCountry
-                    // Buscar el objeto CountryDetail en la lista completa
+                    // Buscamos el objeto CountryDetail en la lista completa
                     let allCountries = contentViewModel.countryList.filter { ($0.cases.values.first?.total ?? 0) > 0 }
                     if let found = allCountries.first(where: { $0.country.localizedCaseInsensitiveCompare(lastCountry) == .orderedSame }) {
-                        // Consultar detalles y mostrar modal automáticamente
+                        // Consultamos detalles y mostrar modal automáticamente
                         isLoadingDetail = true
                         showSuccess = false
                         if let info = await contentViewModel.countryInfoRequirement.getCountryInfo(country: found.country) {
                             selectedCountry = info
                             showSuccess = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                showSuccess = false
+                            }
                         } else {
                             selectedCountry = found
                         }
@@ -265,9 +286,9 @@ struct CountryDetailSheet: View {
                     .padding(.horizontal)
 
                     if !filteredDates.isEmpty {
-                        // Agrupar por mes
+                        // Agrupamos por mes
                         let groupedByMonth = Dictionary(grouping: filteredDates) { date in
-                            String(date.prefix(7)) // yyyy-MM
+                            String(date.prefix(7)) 
                         }
                         Text("Detalle por mes")
                             .font(.headline)
